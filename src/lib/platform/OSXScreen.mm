@@ -1911,78 +1911,97 @@ OSXScreen::handleCGInputEventSecondary(
 // Quartz event tap support
 CGEventRef
 OSXScreen::handleCGInputEvent(CGEventTapProxy proxy,
-							   CGEventType type,
-							   CGEventRef event,
-							   void* refcon)
+                               CGEventType type,
+                               CGEventRef event,
+                               void* refcon)
 {
-	OSXScreen* screen = (OSXScreen*)refcon;
-	CGPoint pos;
+    OSXScreen* screen = (OSXScreen*)refcon;
+    CGPoint pos;
 
-	switch(type) {
-		case kCGEventLeftMouseDown:
-		case kCGEventRightMouseDown:
-		case kCGEventOtherMouseDown:
-			screen->onMouseButton(true, CGEventGetIntegerValueField(event, kCGMouseEventButtonNumber) + 1);
-			break;
-		case kCGEventLeftMouseUp:
-		case kCGEventRightMouseUp:
-		case kCGEventOtherMouseUp:
-			screen->onMouseButton(false, CGEventGetIntegerValueField(event, kCGMouseEventButtonNumber) + 1);
-			break;
-		case kCGEventLeftMouseDragged:
-		case kCGEventRightMouseDragged:
-		case kCGEventOtherMouseDragged:
-		case kCGEventMouseMoved:
-			pos = CGEventGetLocation(event);
-			screen->onMouseMove(pos.x, pos.y);
+    // Handle standard keyboard events
+    if (type == kCGEventKeyDown || type == kCGEventKeyUp || type == kCGEventFlagsChanged)
+    {
+        if (screen->m_isOnScreen)
+        {
+            // Cursor is on server screen
+            screen->onKey(event);
+            return event;
+        }
+        else
+        {
+            // Cursor is on client screen
+            // Pass the event to the OS
+            return event;
+        }
+    }
 
-			// The system ignores our cursor-centering calls if
-			// we don't return the event. This should be harmless,
-			// but might register as slight movement to other apps
-			// on the system. It hasn't been a problem before, though.
-			return event;
-			break;
-		case kCGEventScrollWheel:
-			screen->onMouseWheel(screen->mapScrollWheelToBarrier(
-								 CGEventGetIntegerValueField(event, kCGScrollWheelEventFixedPtDeltaAxis2) / 65536.0f),
-								 screen->mapScrollWheelToBarrier(
-								 CGEventGetIntegerValueField(event, kCGScrollWheelEventFixedPtDeltaAxis1) / 65536.0f));
-			break;
-		case kCGEventKeyDown:
-		case kCGEventKeyUp:
-		case kCGEventFlagsChanged:
-			screen->onKey(event);
-			break;
-		case kCGEventTapDisabledByTimeout:
-			// Re-enable our event-tap
-			CGEventTapEnable(screen->m_eventTapPort, true);
-			LOG((CLOG_INFO "quartz event tap was disabled by timeout, re-enabling"));
-			break;
-		case kCGEventTapDisabledByUserInput:
-			LOG((CLOG_ERR "quartz event tap was disabled by user input"));
-			break;
-		case NX_NULLEVENT:
-			break;
-		default:
-			if (type == NX_SYSDEFINED) {
-			if (isMediaKeyEvent (event)) {
+    // Handle system-defined events (e.g., media keys)
+    if (type == NX_SYSDEFINED)
+	{
+		if (screen->m_isOnScreen)
+		{
+			// Cursor is on server screen
+			if (isMediaKeyEvent(event))
+			{
 				LOG((CLOG_DEBUG2 "detected media key event"));
-				screen->onMediaKey (event);
-			} else {
+
+				// Optionally process the media key event
+				screen->onMediaKey(event);
+
+				// Instead of consuming the event, return it to allow the OS to process it
+				return event;
+			}
+			else
+			{
 				LOG((CLOG_DEBUG2 "ignoring unknown system defined event"));
 				return event;
 			}
-			break;
-			}
-
-			LOG((CLOG_DEBUG3 "unknown quartz event type: 0x%02x", type));
+		}
+		else
+		{
+			// Cursor is on client screen
+			// Pass the event to the OS
+			return event;
+		}
 	}
 
-	if (screen->m_isOnScreen) {
-		return event;
-	} else {
-		return NULL;
-	}
+    // Handle other events (e.g., mouse events)
+    switch(type) {
+        case kCGEventLeftMouseDown:
+        case kCGEventRightMouseDown:
+        case kCGEventOtherMouseDown:
+            screen->onMouseButton(true, CGEventGetIntegerValueField(event, kCGMouseEventButtonNumber) + 1);
+            break;
+        case kCGEventLeftMouseUp:
+        case kCGEventRightMouseUp:
+        case kCGEventOtherMouseUp:
+            screen->onMouseButton(false, CGEventGetIntegerValueField(event, kCGMouseEventButtonNumber) + 1);
+            break;
+        case kCGEventLeftMouseDragged:
+        case kCGEventRightMouseDragged:
+        case kCGEventOtherMouseDragged:
+        case kCGEventMouseMoved:
+            pos = CGEventGetLocation(event);
+            screen->onMouseMove(pos.x, pos.y);
+            return event;
+            break;
+        case kCGEventScrollWheel:
+            screen->onMouseWheel(screen->mapScrollWheelToBarrier(
+                                 CGEventGetIntegerValueField(event, kCGScrollWheelEventFixedPtDeltaAxis2) / 65536.0f),
+                                 screen->mapScrollWheelToBarrier(
+                                 CGEventGetIntegerValueField(event, kCGScrollWheelEventFixedPtDeltaAxis1) / 65536.0f));
+            break;
+        // Handle other event types if needed
+        default:
+            LOG((CLOG_DEBUG3 "unknown quartz event type: 0x%02x", type));
+            break;
+    }
+
+    if (screen->m_isOnScreen) {
+        return event;
+    } else {
+        return NULL;
+    }
 }
 
 void
